@@ -1,0 +1,185 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  ADMIN
+  MEMBER
+}
+
+enum MeetingStatus {
+  DRAFT
+  FINALIZED
+}
+
+enum LoanStatus {
+  ACTIVE
+  CLOSED
+}
+
+enum RequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model JoinRequest {
+  id             String        @id @default(cuid())
+  clerkUserId    String
+  organizationId String
+  name           String
+  phone          String?
+  status         RequestStatus @default(PENDING)
+  createdAt      DateTime      @default(now())
+
+  organization   Organization @relation(fields: [organizationId], references: [id])
+}
+
+enum OpeningBalanceType {
+  CORPUS
+  MEMBER_SAVINGS
+  LOAN_OUTSTANDING
+  CASH_IN_HAND
+  BANK_BALANCE
+}
+
+enum TransactionSource {
+  CASH
+  BANK
+}
+
+model OpeningBalance {
+  id                String             @id @default(cuid())
+  organizationId    String
+  memberId          String?
+  type              OpeningBalanceType
+  amount            Int                // stored in paise
+  description       String?
+  createdAt         DateTime           @default(now())
+
+  organization      Organization @relation(fields: [organizationId], references: [id])
+  member            Member?      @relation(fields: [memberId], references: [id])
+}
+
+model AuditLog {
+  id               String   @id @default(cuid())
+  organizationId   String
+  userId           String
+  action           String
+  entityType       String
+  entityId         String
+  beforeData       Json?
+  afterData        Json?
+  createdAt         DateTime @default(now())
+}
+
+model Organization {
+  id        String   @id @default(cuid())
+  name      String
+  village   String
+  district  String
+  createdAt DateTime @default(now())
+  
+  // Financial Settings
+  monthlySavingsTarget Int   @default(0)
+  defaultInterestRate  Float @default(2.0)
+  defaultPenaltyAmount Int   @default(0)
+  openingCashBalance   Int   @default(0)
+  openingBankBalance   Int   @default(0)
+
+  members       Member[]
+  meetings      Meeting[]
+  loans         Loan[]
+  expenses      Expense[]
+  joinRequests  JoinRequest[]
+  openingBalances OpeningBalance[]
+}
+
+model Member {
+  id             String   @id @default(cuid())
+  organizationId String
+  clerkUserId    String?
+  name           String
+  phone          String?
+  memberNumber   Int
+  role           Role     @default(MEMBER)
+  isActive       Boolean  @default(true)
+  joiningDate    DateTime @default(now())
+  createdAt      DateTime @default(now())
+
+  organization    Organization @relation(fields: [organizationId], references: [id])
+  contributions   MeetingContribution[]
+  loans           Loan[]
+  openingBalances OpeningBalance[]
+}
+
+enum ExpenseCategory {
+  STATIONERY
+  BANK_CHARGES
+  REFRESHMENTS
+  OTHER
+}
+
+model Meeting {
+  id             String        @id @default(cuid())
+  organizationId String
+  meetingDate    DateTime
+  monthYear      String
+  status         MeetingStatus @default(DRAFT)
+  openingBalance Int           @default(0)
+  
+  // Split accounting
+  openingCash    Int           @default(0)
+  openingBank    Int           @default(0)
+
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  contributions  MeetingContribution[]
+  expenses       Expense[]
+}
+
+model Expense {
+  id             String          @id @default(cuid())
+  meetingId      String
+  organizationId String
+  category       ExpenseCategory
+  amount         Int
+  description    String?
+  source         TransactionSource @default(CASH)
+  createdAt      DateTime        @default(now())
+
+  meeting        Meeting      @relation(fields: [meetingId], references: [id])
+  organization   Organization @relation(fields: [organizationId], references: [id])
+}
+
+model MeetingContribution {
+  id              String  @id @default(cuid())
+  meetingId       String
+  memberId        String
+  savingsAmount   Int     @default(0)
+  loanRepayment   Int     @default(0)
+  interestPaid    Int     @default(0)
+  penaltyPaid     Int     @default(0)
+  isPresent       Boolean @default(true)
+  source          TransactionSource @default(CASH)
+
+  meeting         Meeting @relation(fields: [meetingId], references: [id])
+  member          Member  @relation(fields: [memberId], references: [id])
+}
+
+model Loan {
+  id                String     @id @default(cuid())
+  organizationId    String
+  memberId          String
+  loanAmount        Int
+  disbursedDate     DateTime   @default(now())
+  interestRate      Float      @default(2.0)
+  outstandingAmount Int
+  status            LoanStatus @default(ACTIVE)
+
+  organization      Organization @relation(fields: [organizationId], references: [id])
+  member            Member       @relation(fields: [memberId], references: [id])
+}
